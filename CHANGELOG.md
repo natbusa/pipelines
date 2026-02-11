@@ -1,5 +1,10 @@
 # Changelog
 
+This repository is a fork of the original [Open WebUI Pipelines](https://github.com/open-webui/pipelines)
+project, containing substantial modifications by Nate Busa (natalino.busa@gmail.com)
+with assistance from Claude (Anthropic). All fork modifications are subject to the
+same license terms as the upstream code from which they derive.
+
 ## 0.1.0
 
 Initial release of the forked pipelines server.
