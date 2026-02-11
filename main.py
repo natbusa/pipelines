@@ -22,10 +22,8 @@ import time
 import json
 import uuid
 import sys
-import subprocess
 
-
-from config import API_KEY, PIPELINES_DIR, VALVES_DIR, LOG_LEVELS, INSTALL_FRONTMATTER_REQUIREMENTS
+from config import API_KEY, PIPELINES_DIR, VALVES_DIR, LOG_LEVELS
 
 if not os.path.exists(PIPELINES_DIR):
     os.makedirs(PIPELINES_DIR)
@@ -115,40 +113,9 @@ def parse_frontmatter(content):
     return frontmatter
 
 
-def install_frontmatter_requirements(requirements):
-    if requirements:
-        req_list = [req.strip() for req in requirements.split(",")]
-        for req in req_list:
-            logging.info(f"Installing requirement: {req}")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", req])
-    else:
-        logging.debug("No requirements found in frontmatter.")
-
-
 async def load_module_from_path(module_name, module_path):
 
     try:
-        # Read the module content
-        with open(module_path, "r") as file:
-            content = file.read()
-
-        # Parse frontmatter
-        frontmatter = {}
-        if content.startswith('"""'):
-            end = content.find('"""', 3)
-            if end != -1:
-                frontmatter_content = content[3:end]
-                frontmatter = parse_frontmatter(frontmatter_content)
-
-        # Install requirements if specified
-        if "requirements" in frontmatter:
-            if INSTALL_FRONTMATTER_REQUIREMENTS:
-                install_frontmatter_requirements(frontmatter["requirements"])
-            else:
-                logging.info(
-                    f"Skipping frontmatter requirements for {module_name}"
-                )
-
         # Load the module
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         module = importlib.util.module_from_spec(spec)
@@ -160,41 +127,12 @@ async def load_module_from_path(module_name, module_path):
             raise Exception("No Pipeline class found")
     except Exception as e:
         logging.error(f"Error loading module: {module_name}: {e}")
-
-        # Move the file to the error folder
-        failed_pipelines_folder = os.path.join(PIPELINES_DIR, "failed")
-        if not os.path.exists(failed_pipelines_folder):
-            os.makedirs(failed_pipelines_folder)
-
-        failed_file_path = os.path.join(failed_pipelines_folder, f"{module_name}.py")
-        os.rename(module_path, failed_file_path)
     return None
 
 
 async def load_package_from_directory(package_name, package_path):
     try:
         init_path = os.path.join(package_path, "__init__.py")
-
-        # Read __init__.py content for frontmatter
-        with open(init_path, "r") as file:
-            content = file.read()
-
-        # Parse frontmatter
-        frontmatter = {}
-        if content.startswith('"""'):
-            end = content.find('"""', 3)
-            if end != -1:
-                frontmatter_content = content[3:end]
-                frontmatter = parse_frontmatter(frontmatter_content)
-
-        # Install requirements if specified
-        if "requirements" in frontmatter:
-            if INSTALL_FRONTMATTER_REQUIREMENTS:
-                install_frontmatter_requirements(frontmatter["requirements"])
-            else:
-                logging.info(
-                    f"Skipping frontmatter requirements for {package_name}"
-                )
 
         # Load the package using importlib so relative imports work
         spec = importlib.util.spec_from_file_location(
@@ -213,16 +151,6 @@ async def load_package_from_directory(package_name, package_path):
             raise Exception("No Pipeline class found")
     except Exception as e:
         logging.error(f"Error loading package: {package_name}: {e}")
-
-        # Move the directory to the failed folder
-        failed_pipelines_folder = os.path.join(PIPELINES_DIR, "failed")
-        if not os.path.exists(failed_pipelines_folder):
-            os.makedirs(failed_pipelines_folder)
-
-        failed_package_path = os.path.join(failed_pipelines_folder, package_name)
-        if os.path.exists(failed_package_path):
-            shutil.rmtree(failed_package_path)
-        shutil.move(package_path, failed_package_path)
     return None
 
 
@@ -286,8 +214,6 @@ async def load_modules_from_directory(directory):
             continue
         entry_path = os.path.join(directory, entry)
         if not os.path.isdir(entry_path):
-            continue
-        if entry == "failed":
             continue
         if entry in loaded_single_files:
             continue

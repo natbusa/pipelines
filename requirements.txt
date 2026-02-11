@@ -1,4 +1,3 @@
-# Core server dependencies — pipeline-specific deps go in frontmatter
 fastapi
 uvicorn[standard]
 pydantic

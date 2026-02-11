@@ -1,17 +1,12 @@
 import os
 import logging
-####################################
-# Load .env file
-####################################
 
 try:
     from dotenv import load_dotenv, find_dotenv
-
     load_dotenv(find_dotenv("./.env"))
 except ImportError:
     print("dotenv not installed, skipping...")
 
-# Define log levels dictionary
 LOG_LEVELS = {
     'DEBUG': logging.DEBUG,
     'INFO': logging.INFO,
@@ -22,7 +17,4 @@ LOG_LEVELS = {
 
 API_KEY = os.getenv("PIPELINES_API_KEY", "0p3n-w3bu!")
 PIPELINES_DIR = os.getenv("PIPELINES_DIR", "./pipelines")
-VALVES_DIR = os.getenv("VALVES_DIR", os.path.join(PIPELINES_DIR, ".valves"))
-INSTALL_FRONTMATTER_REQUIREMENTS = (
-    os.getenv("INSTALL_FRONTMATTER_REQUIREMENTS", "false").lower() == "true"
-)
+VALVES_DIR = os.getenv("VALVES_DIR", "./valves")

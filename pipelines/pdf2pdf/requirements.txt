@@ -1,0 +1,3 @@
+arabic-reshaper
+pymupdf
+python-bidi

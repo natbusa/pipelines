@@ -61,16 +61,6 @@ For a streamlined setup using Docker:
 > [!TIP]
 > If you are unable to connect, it is most likely a Docker networking issue. We encourage you to troubleshoot on your own and share your methods and solutions in the discussions forum.
 
-If you need to install a custom pipeline with additional dependencies:
-
-- **Run the following command:**
-
-  ```sh
-  docker run -d -p 9099:9099 --add-host=host.docker.internal:host-gateway -e PIPELINES_URLS="https://github.com/open-webui/pipelines/blob/main/examples/pipelines/providers/openai_pipeline.py" -v pipelines:/app/pipelines --name pipelines --restart always ghcr.io/open-webui/pipelines:main
-  ```
-
-Alternatively, you can directly install pipelines from the admin settings by copying and pasting the pipeline URL, provided it doesn't have additional dependencies.
-
 That's it! You're now ready to build customizable AI integrations effortlessly with Pipelines. Enjoy!
 
 ### Docker Compose together with Open WebUI
@@ -92,13 +82,16 @@ services:
       image: ghcr.io/open-webui/pipelines:main
       volumes:
         - pipelines:/app/pipelines
+        - valves:/app/valves
       restart: always
       environment:
         - PIPELINES_API_KEY=0p3n-w3bu!
+        - VALVES_DIR=/app/valves
 
 volumes:
   open-webui: {}
   pipelines: {}
+  valves: {}
 ```
 
 To start your services, run the following command:
@@ -144,43 +137,19 @@ Get started with Pipelines in a few easy steps:
 
 Once the server is running, set the OpenAI URL on your client to the Pipelines URL. This unlocks the full capabilities of Pipelines, integrating any Python library and creating custom workflows tailored to your needs.
 
-### Advanced Docker Builds
-If you create your own pipelines, you can install them when the Docker image is built.  For example,
-create a bash script with the snippet below to collect files from a path, add them as install URLs, 
-and build the Docker image with the new pipelines automatically installed.
-
-NOTE: The pipelines module will still attempt to install any package dependencies found at in your
-file headers at start time, but they will not be downloaded again.
-
-```sh
-# build in the specific pipelines
-PIPELINE_DIR="pipelines-custom"
-# assuming the above directory is in your source repo and not skipped by `.dockerignore`, it will get copied to the image
-PIPELINE_PREFIX="file:///app"
-
-# retrieve all the sub files
-export PIPELINES_URLS=
-for file in "$PIPELINE_DIR"/*; do
-    if [[ -f "$file" ]]; then
-        if [[ "$file" == *.py ]]; then
-            if [ -z "$PIPELINES_URLS" ]; then
-                PIPELINES_URLS="$PIPELINE_PREFIX/$file"
-            else
-                PIPELINES_URLS="$PIPELINES_URLS;$PIPELINE_PREFIX/$file"
-            fi
-        fi
-    fi
-done
-echo "New Custom Install Pipes: $PIPELINES_URLS"
-
-docker build --build-arg PIPELINES_URLS=$PIPELINES_URLS --build-arg MINIMUM_BUILD=true -f Dockerfile .
-```
-
 ## 📂 Directory Structure and Examples
 
-The `/pipelines` directory is the core of your setup. Add new modules, customize existing ones, and manage your workflows here. All the pipelines in the `/pipelines` directory will be **automatically loaded** when the server launches.
+The `./pipelines` directory is the core of your setup. Add new modules, customize existing ones, and manage your workflows here. All pipelines in `./pipelines` are **automatically loaded** when the server launches. Each package pipeline can include its own `requirements.txt` — these are installed automatically by `start.sh` at startup.
 
-You can change this directory from `/pipelines` to another location using the `PIPELINES_DIR` env variable.
+Valve configurations are stored separately in `./valves` (one `valves.json` per pipeline). In Docker, mount this as its own persistent volume so configs survive container rebuilds independently of pipeline code.
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PIPELINES_API_KEY` | `0p3n-w3bu!` | API key for authentication |
+| `PIPELINES_DIR` | `./pipelines` | Directory to load pipelines from |
+| `VALVES_DIR` | `./valves` | Persistent directory for valve configs (`valves.json` per pipeline) |
 
 ### Integration Examples
 

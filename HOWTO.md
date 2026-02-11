@@ -2,7 +2,7 @@
 
 ## Pipeline layout
 
-A single container serves every pipeline found in `PIPELINES_DIR` (default `./pipelines`). Each `.py` file or package directory with an `__init__.py` is loaded as its own pipeline, served by the same FastAPI app, and listed at `/v1/models`.
+A single container serves every pipeline found in `./pipelines`. Each `.py` file or package directory with an `__init__.py` is loaded as its own pipeline, served by the same FastAPI app, and listed at `/v1/models`.
 
 ```
 pipelines/
@@ -12,6 +12,7 @@ pipelines/
     __init__.py
     tools.py
     prompts.py
+    requirements.txt       # pipeline-specific deps (installed by start.sh)
 ```
 
 Each pipeline gets its own:
@@ -28,7 +29,6 @@ The simplest form. Drop a `.py` file into `pipelines/` with a `Pipeline` class:
 """
 title: My Pipeline
 version: 0.1.0
-requirements: requests
 """
 
 from pydantic import BaseModel, Field
@@ -45,7 +45,7 @@ class Pipeline:
         return f"Echo: {user_message}"
 ```
 
-The frontmatter (`title`, `version`, `requirements`) is parsed at load time. Dependencies listed in `requirements` are installed automatically unless `INSTALL_FRONTMATTER_REQUIREMENTS=false`.
+The frontmatter (`title`, `version`) is parsed at load time for metadata. Pipeline-specific dependencies go in a `requirements.txt` file next to the pipeline (for package pipelines) or in a sibling directory.
 
 ## Package pipelines
 
@@ -54,18 +54,18 @@ When a pipeline grows beyond a single file, convert it to a package — a direct
 ```
 pipelines/
   my_agent/
-    __init__.py    # must contain the Pipeline class
-    tools.py       # helper modules
+    __init__.py        # must contain the Pipeline class
+    tools.py           # helper modules
     prompts.py
+    requirements.txt   # pipeline-specific deps
 ```
 
-`__init__.py` works exactly like a single-file pipeline (same frontmatter, same `Pipeline` class). The difference is you can split logic across files and use relative imports:
+`__init__.py` works exactly like a single-file pipeline (same frontmatter, same `Pipeline` class). The difference is you can split logic across files and use relative imports. Dependencies go in `requirements.txt` next to `__init__.py`:
 
 ```python
 """
 title: My Agent
 version: 0.1.0
-requirements: langchain
 """
 
 from pydantic import BaseModel, Field
@@ -127,38 +127,41 @@ Your pipelines appear as model options in the UI. Edits to pipeline files are pi
 
 ### Using the stock image with your own pipelines
 
-Mount your pipelines directory and point `PIPELINES_REQUIREMENTS_PATH` at a shared requirements file:
+Mount your pipelines directory and a persistent volume for valve configs:
 
 ```yaml
 pipelines:
   image: ghcr.io/open-webui/pipelines:main
   volumes:
     - ./my-pipelines:/app/pipelines
+    - ./my-valves:/app/valves
   restart: always
   environment:
     - PIPELINES_API_KEY=0p3n-w3bu!
-    - PIPELINES_REQUIREMENTS_PATH=/app/pipelines/requirements.txt
+    - VALVES_DIR=/app/valves
 ```
 
-Where `my-pipelines/` contains your pipelines and a shared requirements file:
+Where `my-pipelines/` contains your pipelines, each with their own deps:
 
 ```
 my-pipelines/
-  requirements.txt       # shared deps for your pipelines
   summarizer.py
   my_agent/
     __init__.py
     tools.py
+    requirements.txt     # deps for this pipeline
 ```
 
-`PIPELINES_REQUIREMENTS_PATH` runs `pip install` on every container start. Packages already installed are skipped quickly, but if startup time matters, bake the deps into a custom image instead:
+The `my-valves/` volume persists valve configurations (`valves.json` per pipeline) across container restarts and image upgrades. Pipeline code can be rebuilt freely without losing runtime config.
+
+On every container start, `start.sh` globs `pipelines/**/requirements.txt` and runs `pip install` for each. Already-installed packages are skipped quickly by pip, but if startup time matters, bake the deps into a custom image instead:
 
 ### Building a custom image
 
 ```dockerfile
 FROM ghcr.io/open-webui/pipelines:main
-COPY my-pipelines/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+COPY my-pipelines/ /app/pipelines/
+RUN bash start.sh --mode setup
 ```
 
 Then deps are installed at build time and startup is instant.
@@ -167,13 +170,9 @@ Then deps are installed at build time and startup is instant.
 
 | Variable | Default | Description |
 |---|---|---|
-| `PIPELINES_DIR` | `./pipelines` | Directory to load pipelines from |
-| `VALVES_DIR` | `$PIPELINES_DIR/.valves` | Directory to store valve configs (`valves.json` per pipeline) |
 | `PIPELINES_API_KEY` | `0p3n-w3bu!` | API key for authentication |
-| `PIPELINES_URLS` | *(unset)* | Semicolon-separated URLs to download pipelines from at startup |
-| `PIPELINES_REQUIREMENTS_PATH` | *(unset)* | Path to a requirements.txt to install at startup |
-| `INSTALL_FRONTMATTER_REQUIREMENTS` | `false` | Install deps listed in pipeline frontmatter at startup |
-| `RESET_PIPELINES_DIR` | `false` | Wipe pipeline code on startup (valve configs in `.valves/` are preserved) |
+| `PIPELINES_DIR` | `./pipelines` | Directory to load pipelines from |
+| `VALVES_DIR` | `./valves` | Directory to store valve configs (`valves.json` per pipeline). Mount as a persistent volume in Docker to preserve config across container rebuilds. |
 
 ## Testing pipelines
 

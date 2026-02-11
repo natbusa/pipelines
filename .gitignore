@@ -15,5 +15,6 @@ venv/
 
 *.egg-info/
 
-pipelines/
+# valves is ignored because the config are generated and not committed as part of the code
+valves/
 .valves/
