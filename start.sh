@@ -140,11 +140,23 @@ if [[ "$MODE" == "setup" || "$MODE" == "full" ]]; then
       download_pipelines "$path" "$PIPELINES_DIR"
     done
 
-    for file in "$PIPELINES_DIR"/*; do
-      if [[ -f "$file" ]]; then
-        install_frontmatter_requirements "$file"
-      fi
-    done
+    if [ "${INSTALL_FRONTMATTER_REQUIREMENTS:-true}" = "true" ]; then
+      for file in "$PIPELINES_DIR"/*; do
+        if [[ -f "$file" ]]; then
+          install_frontmatter_requirements "$file"
+        fi
+      done
+
+      # Also install frontmatter requirements from package pipelines
+      for dir in "$PIPELINES_DIR"/*/; do
+        init_file="${dir}__init__.py"
+        if [[ -f "$init_file" ]]; then
+          install_frontmatter_requirements "$init_file"
+        fi
+      done
+    else
+      echo "INSTALL_FRONTMATTER_REQUIREMENTS is not true. Skipping frontmatter requirements installation."
+    fi
   else
     echo "PIPELINES_URLS not specified. Skipping pipelines download and installation."
   fi

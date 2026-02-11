@@ -29,7 +29,7 @@ import sys
 import subprocess
 
 
-from config import API_KEY, PIPELINES_DIR, LOG_LEVELS
+from config import API_KEY, PIPELINES_DIR, LOG_LEVELS, INSTALL_FRONTMATTER_REQUIREMENTS
 
 if not os.path.exists(PIPELINES_DIR):
     os.makedirs(PIPELINES_DIR)
@@ -147,7 +147,12 @@ async def load_module_from_path(module_name, module_path):
 
         # Install requirements if specified
         if "requirements" in frontmatter:
-            install_frontmatter_requirements(frontmatter["requirements"])
+            if INSTALL_FRONTMATTER_REQUIREMENTS:
+                install_frontmatter_requirements(frontmatter["requirements"])
+            else:
+                logging.info(
+                    f"Skipping frontmatter requirements for {module_name}"
+                )
 
         # Load the module
         spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -172,52 +177,134 @@ async def load_module_from_path(module_name, module_path):
     return None
 
 
+async def load_package_from_directory(package_name, package_path):
+    try:
+        init_path = os.path.join(package_path, "__init__.py")
+
+        # Read __init__.py content for frontmatter
+        with open(init_path, "r") as file:
+            content = file.read()
+
+        # Parse frontmatter
+        frontmatter = {}
+        if content.startswith('"""'):
+            end = content.find('"""', 3)
+            if end != -1:
+                frontmatter_content = content[3:end]
+                frontmatter = parse_frontmatter(frontmatter_content)
+
+        # Install requirements if specified
+        if "requirements" in frontmatter:
+            if INSTALL_FRONTMATTER_REQUIREMENTS:
+                install_frontmatter_requirements(frontmatter["requirements"])
+            else:
+                logging.info(
+                    f"Skipping frontmatter requirements for {package_name}"
+                )
+
+        # Load the package using importlib so relative imports work
+        spec = importlib.util.spec_from_file_location(
+            package_name,
+            init_path,
+            submodule_search_locations=[package_path],
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[package_name] = module
+        spec.loader.exec_module(module)
+        print(f"Loaded package: {package_name}")
+
+        if hasattr(module, "Pipeline"):
+            return module.Pipeline()
+        else:
+            raise Exception("No Pipeline class found")
+    except Exception as e:
+        print(f"Error loading package: {package_name}")
+
+        # Move the directory to the failed folder
+        failed_pipelines_folder = os.path.join(PIPELINES_DIR, "failed")
+        if not os.path.exists(failed_pipelines_folder):
+            os.makedirs(failed_pipelines_folder)
+
+        failed_package_path = os.path.join(failed_pipelines_folder, package_name)
+        if os.path.exists(failed_package_path):
+            shutil.rmtree(failed_package_path)
+        shutil.move(package_path, failed_package_path)
+        print(e)
+    return None
+
+
+def _register_pipeline(pipeline, module_name, directory):
+    """Register a pipeline: set up valves.json and add to global registries."""
+    global PIPELINE_MODULES, PIPELINE_NAMES
+
+    subfolder_path = os.path.join(directory, module_name)
+    if not os.path.exists(subfolder_path):
+        os.makedirs(subfolder_path)
+        logging.info(f"Created subfolder: {subfolder_path}")
+
+    valves_json_path = os.path.join(subfolder_path, "valves.json")
+    if not os.path.exists(valves_json_path):
+        with open(valves_json_path, "w") as f:
+            json.dump({}, f)
+        logging.info(f"Created valves.json in: {subfolder_path}")
+
+    # Overwrite pipeline.valves with values from valves.json
+    if os.path.exists(valves_json_path):
+        with open(valves_json_path, "r") as f:
+            valves_json = json.load(f)
+            if hasattr(pipeline, "valves"):
+                ValvesModel = pipeline.valves.__class__
+                combined_valves = {
+                    **pipeline.valves.model_dump(),
+                    **valves_json,
+                }
+                valves = ValvesModel(**combined_valves)
+                pipeline.valves = valves
+                logging.info(f"Updated valves for module: {module_name}")
+
+    pipeline_id = pipeline.id if hasattr(pipeline, "id") else module_name
+    PIPELINE_MODULES[pipeline_id] = pipeline
+    PIPELINE_NAMES[pipeline_id] = module_name
+    logging.info(f"Loaded module: {module_name}")
+
+
 async def load_modules_from_directory(directory):
     global PIPELINE_MODULES
     global PIPELINE_NAMES
 
+    loaded_single_files = set()
+
+    # Pass 1: Load single .py files (existing behavior)
     for filename in os.listdir(directory):
         if filename.endswith(".py"):
             module_name = filename[:-3]  # Remove the .py extension
             module_path = os.path.join(directory, filename)
 
-            # Create subfolder matching the filename without the .py extension
-            subfolder_path = os.path.join(directory, module_name)
-            if not os.path.exists(subfolder_path):
-                os.makedirs(subfolder_path)
-                logging.info(f"Created subfolder: {subfolder_path}")
-
-            # Create a valves.json file if it doesn't exist
-            valves_json_path = os.path.join(subfolder_path, "valves.json")
-            if not os.path.exists(valves_json_path):
-                with open(valves_json_path, "w") as f:
-                    json.dump({}, f)
-                logging.info(f"Created valves.json in: {subfolder_path}")
-
             pipeline = await load_module_from_path(module_name, module_path)
             if pipeline:
-                # Overwrite pipeline.valves with values from valves.json
-                if os.path.exists(valves_json_path):
-                    with open(valves_json_path, "r") as f:
-                        valves_json = json.load(f)
-                        if hasattr(pipeline, "valves"):
-                            ValvesModel = pipeline.valves.__class__
-                            # Create a ValvesModel instance using default values and overwrite with valves_json
-                            combined_valves = {
-                                **pipeline.valves.model_dump(),
-                                **valves_json,
-                            }
-                            valves = ValvesModel(**combined_valves)
-                            pipeline.valves = valves
-
-                            logging.info(f"Updated valves for module: {module_name}")
-
-                pipeline_id = pipeline.id if hasattr(pipeline, "id") else module_name
-                PIPELINE_MODULES[pipeline_id] = pipeline
-                PIPELINE_NAMES[pipeline_id] = module_name
-                logging.info(f"Loaded module: {module_name}")
+                _register_pipeline(pipeline, module_name, directory)
+                loaded_single_files.add(module_name)
             else:
                 logging.warning(f"No Pipeline class found in {module_name}")
+
+    # Pass 2: Load package pipelines (directories with __init__.py)
+    for entry in os.listdir(directory):
+        entry_path = os.path.join(directory, entry)
+        if not os.path.isdir(entry_path):
+            continue
+        if entry == "failed":
+            continue
+        if entry in loaded_single_files:
+            continue
+        init_path = os.path.join(entry_path, "__init__.py")
+        if not os.path.exists(init_path):
+            continue
+
+        pipeline = await load_package_from_directory(entry, entry_path)
+        if pipeline:
+            _register_pipeline(pipeline, entry, directory)
+        else:
+            logging.warning(f"No Pipeline class found in package {entry}")
 
     global PIPELINES
     PIPELINES = get_all_pipelines()
@@ -239,6 +326,15 @@ async def on_shutdown():
 
 async def reload():
     await on_shutdown()
+
+    # Clean up sys.modules entries for package pipelines to avoid stale imports
+    for module_name in list(PIPELINE_NAMES.values()):
+        keys_to_remove = [
+            key for key in sys.modules if key == module_name or key.startswith(f"{module_name}.")
+        ]
+        for key in keys_to_remove:
+            del sys.modules[key]
+
     # Clear existing pipelines
     PIPELINES.clear()
     PIPELINE_MODULES.clear()
@@ -489,11 +585,23 @@ async def delete_pipeline(
             "status": True,
             "detail": f"Pipeline {pipeline_id} deleted successfully",
         }
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Pipeline {pipeline_id} not found",
-        )
+
+    # Check for package pipeline directory
+    package_path = os.path.join(PIPELINES_DIR, pipeline_name)
+    if os.path.isdir(package_path) and os.path.exists(
+        os.path.join(package_path, "__init__.py")
+    ):
+        shutil.rmtree(package_path)
+        await reload()
+        return {
+            "status": True,
+            "detail": f"Pipeline {pipeline_id} deleted successfully",
+        }
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Pipeline {pipeline_id} not found",
+    )
 
 
 @app.post("/v1/pipelines/reload")
