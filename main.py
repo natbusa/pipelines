@@ -644,6 +644,13 @@ async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
     def job():
         pipeline_id = form_data.model
         pipe = PIPELINE_MODULES[pipeline_id].pipe
+        body = form_data.model_dump()
+        user = body.get("user")
+
+        logging.info(
+            f"chat/completions: pipeline={pipeline_id} "
+            f"user={user.get('id') if user else 'anonymous'}"
+        )
 
         if form_data.stream:
 
@@ -652,7 +659,8 @@ async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
                     user_message=user_message,
                     model_id=pipeline_id,
                     messages=messages,
-                    body=form_data.model_dump(),
+                    body=body,
+                    user=user,
                 )
                 logging.info(f"stream:true:{res}")
 
@@ -708,7 +716,8 @@ async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
                 user_message=user_message,
                 model_id=pipeline_id,
                 messages=messages,
-                body=form_data.model_dump(),
+                body=body,
+                user=user,
             )
             logging.info(f"stream:false:{res}")
 
