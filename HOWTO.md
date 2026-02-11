@@ -101,6 +101,73 @@ All pipelines in one container share the same Python environment. You need separ
 - You want **independent scaling** or isolation for resource-heavy pipelines
 - You need **different `PIPELINES_API_KEY` values** per pipeline
 
+## Running locally (dev mode)
+
+Install the server dependencies and start with hot-reload:
+
+```bash
+pip install -r requirements.txt
+./start.sh --reload
+```
+
+The server starts on `http://localhost:9099`. In Open WebUI, go to **Settings > Connections > OpenAI API** and set:
+
+- API URL: `http://localhost:9099`
+- API Key: `0p3n-w3bu!`
+
+Your pipelines appear as model options in the UI. Edits to pipeline files are picked up automatically thanks to `--reload`.
+
+## Deploying with Docker
+
+### Using the stock image with your own pipelines
+
+Mount your pipelines directory and point `PIPELINES_REQUIREMENTS_PATH` at a shared requirements file:
+
+```yaml
+pipelines:
+  image: ghcr.io/open-webui/pipelines:main
+  volumes:
+    - ./my-pipelines:/app/pipelines
+  restart: always
+  environment:
+    - PIPELINES_API_KEY=0p3n-w3bu!
+    - PIPELINES_REQUIREMENTS_PATH=/app/pipelines/requirements.txt
+```
+
+Where `my-pipelines/` contains your pipelines and a shared requirements file:
+
+```
+my-pipelines/
+  requirements.txt       # shared deps for your pipelines
+  summarizer.py
+  my_agent/
+    __init__.py
+    tools.py
+```
+
+`PIPELINES_REQUIREMENTS_PATH` runs `pip install` on every container start. Packages already installed are skipped quickly, but if startup time matters, bake the deps into a custom image instead:
+
+### Building a custom image
+
+```dockerfile
+FROM ghcr.io/open-webui/pipelines:main
+COPY my-pipelines/requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
+```
+
+Then deps are installed at build time and startup is instant.
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PIPELINES_DIR` | `./pipelines` | Directory to load pipelines from |
+| `PIPELINES_API_KEY` | `0p3n-w3bu!` | API key for authentication |
+| `PIPELINES_URLS` | *(unset)* | Semicolon-separated URLs to download pipelines from at startup |
+| `PIPELINES_REQUIREMENTS_PATH` | *(unset)* | Path to a requirements.txt to install at startup |
+| `INSTALL_FRONTMATTER_REQUIREMENTS` | `false` | Install deps listed in pipeline frontmatter at startup |
+| `RESET_PIPELINES_DIR` | `false` | Wipe the pipelines directory on startup |
+
 ## Testing pipelines
 
 Install test dependencies:
