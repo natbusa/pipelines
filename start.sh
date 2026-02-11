@@ -140,7 +140,7 @@ if [[ "$MODE" == "setup" || "$MODE" == "full" ]]; then
       download_pipelines "$path" "$PIPELINES_DIR"
     done
 
-    if [ "${INSTALL_FRONTMATTER_REQUIREMENTS:-true}" = "true" ]; then
+    if [ "${INSTALL_FRONTMATTER_REQUIREMENTS:-false}" = "true" ]; then
       for file in "$PIPELINES_DIR"/*; do
         if [[ -f "$file" ]]; then
           install_frontmatter_requirements "$file"

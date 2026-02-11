@@ -23,5 +23,5 @@ LOG_LEVELS = {
 API_KEY = os.getenv("PIPELINES_API_KEY", "0p3n-w3bu!")
 PIPELINES_DIR = os.getenv("PIPELINES_DIR", "./pipelines")
 INSTALL_FRONTMATTER_REQUIREMENTS = (
-    os.getenv("INSTALL_FRONTMATTER_REQUIREMENTS", "true").lower() == "true"
+    os.getenv("INSTALL_FRONTMATTER_REQUIREMENTS", "false").lower() == "true"
 )
