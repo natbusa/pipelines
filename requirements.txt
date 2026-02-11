@@ -1,10 +1,10 @@
 # Core server dependencies — pipeline-specific deps go in frontmatter
-fastapi==0.111.0
-uvicorn[standard]==0.22.0
-pydantic==2.7.1
-python-multipart==0.0.9
-aiohttp==3.9.5
-requests==2.32.2
-passlib[bcrypt]==1.7.4
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+aiohttp
+requests
+passlib[bcrypt]
 PyJWT[crypto]
 python-dotenv
