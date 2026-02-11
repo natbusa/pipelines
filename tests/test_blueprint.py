@@ -2,7 +2,7 @@
 
 import pytest
 from pipelines.blueprint import Pipeline
-from tests.helpers import make_body, make_user, collect_pipe
+from tests.helpers import collect_pipe
 
 
 # ---------------------------------------------------------------------------
@@ -81,56 +81,6 @@ def test_valves_serialization():
     assert data == {"cool": True}
     restored = p.Valves(**data)
     assert restored.cool is True
-
-
-# ---------------------------------------------------------------------------
-# Filter (inlet / outlet)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_inlet_adds_system_message():
-    p = Pipeline()
-    body = make_body("hello")
-    result = await p.inlet(body, make_user())
-    messages = result["messages"]
-    assert messages[0]["role"] == "system"
-
-
-@pytest.mark.asyncio
-async def test_inlet_no_duplicate_system_message():
-    p = Pipeline()
-    body = make_body("hello")
-    body["messages"].insert(0, {"role": "system", "content": "existing"})
-    result = await p.inlet(body, make_user())
-    system_msgs = [m for m in result["messages"] if m["role"] == "system"]
-    assert len(system_msgs) == 1
-    assert system_msgs[0]["content"] == "existing"
-
-
-@pytest.mark.asyncio
-async def test_outlet_appends_footer():
-    p = Pipeline()
-    body = {
-        "messages": [
-            {"role": "user", "content": "hi"},
-            {"role": "assistant", "content": "hello back"},
-        ]
-    }
-    result = await p.outlet(body, make_user())
-    assert "Processed by" in result["messages"][-1]["content"]
-
-
-@pytest.mark.asyncio
-async def test_outlet_no_user_message_modification():
-    p = Pipeline()
-    body = {
-        "messages": [
-            {"role": "user", "content": "hi"},
-        ]
-    }
-    result = await p.outlet(body, make_user())
-    assert result["messages"][-1]["content"] == "hi"
 
 
 # ---------------------------------------------------------------------------

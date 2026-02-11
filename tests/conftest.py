@@ -1,3 +1,3 @@
-    """Shared fixtures for pipeline tests."""
+"""Shared fixtures for pipeline tests."""
 
 import pytest

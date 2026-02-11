@@ -1,5 +1,4 @@
-from typing import List, Union, Generator, Iterator, Optional
-from pprint import pprint
+from typing import List, Union, Generator, Iterator
 import requests, json, warnings
 
 # Uncomment to disable SSL verification warnings if needed.
@@ -23,26 +22,6 @@ class Pipeline:
         # This function is called when the server is shutdown.
         print(f"on_shutdown: {__name__}")
         pass
-
-    async def inlet(self, body: dict, user: Optional[dict] = None) -> dict:
-        # This function is called before the OpenAI API request is made. You can modify the form data before it is sent to the OpenAI API.
-        print(f"inlet: {__name__}")
-        if self.debug:
-            print(f"inlet: {__name__} - body:")
-            pprint(body)
-            print(f"inlet: {__name__} - user:")
-            pprint(user)
-        return body
-
-    async def outlet(self, body: dict, user: Optional[dict] = None) -> dict:
-        # This function is called after the OpenAI API response is completed. You can modify the messages after they are received from the OpenAI API.
-        print(f"outlet: {__name__}")
-        if self.debug:
-            print(f"outlet: {__name__} - body:")
-            pprint(body)
-            print(f"outlet: {__name__} - user:")
-            pprint(user)
-        return body
 
     def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
         print(f"pipe: {__name__}")

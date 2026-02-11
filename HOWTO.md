@@ -91,7 +91,7 @@ class Pipeline:
 |---|---|
 | Pipeline is self-contained | Logic spans multiple modules |
 | No shared helpers needed | You want to reuse tools/prompts across files |
-| Quick prototype or simple filter | Pipeline has its own test files or data |
+| Quick prototype | Pipeline has its own test files or data |
 
 ## When to use separate containers
 
@@ -234,21 +234,18 @@ The pattern is always:
 1. Instantiate the `Pipeline` directly
 2. Override valves with test values
 3. `patch()` any external I/O the pipeline module uses
-4. Call `collect_pipe()` / `inlet()` / `outlet()`
+4. Call `collect_pipe()`
 
-### Testing async methods (inlet, outlet, lifecycle)
+### Testing async lifecycle methods
 
 Use the `@pytest.mark.asyncio` decorator:
 
 ```python
 import pytest
 from pipelines.my_pipeline import Pipeline
-from tests.helpers import make_body, make_user
 
 @pytest.mark.asyncio
-async def test_inlet():
+async def test_on_startup():
     p = Pipeline()
-    body = make_body("hello")
-    result = await p.inlet(body, make_user())
-    assert result["messages"][0]["role"] == "system"
+    await p.on_startup()  # should not raise
 ```

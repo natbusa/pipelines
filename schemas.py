@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel, ConfigDict
 
 class OpenAIChatMessage(BaseModel):
@@ -13,10 +13,4 @@ class OpenAIChatCompletionForm(BaseModel):
     model: str
     messages: List[OpenAIChatMessage]
 
-    model_config = ConfigDict(extra="allow")
-
-
-class FilterForm(BaseModel):
-    body: dict
-    user: Optional[dict] = None
     model_config = ConfigDict(extra="allow")

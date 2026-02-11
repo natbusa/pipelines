@@ -14,7 +14,7 @@ from utils.pipelines.misc import convert_to_raw_url
 
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
-from schemas import FilterForm, OpenAIChatCompletionForm
+from schemas import OpenAIChatCompletionForm
 from urllib.parse import urlparse
 
 import shutil
@@ -48,65 +48,12 @@ def get_all_pipelines():
     pipelines = {}
     for pipeline_id in PIPELINE_MODULES.keys():
         pipeline = PIPELINE_MODULES[pipeline_id]
-
-        if hasattr(pipeline, "type"):
-            if pipeline.type == "manifold":
-                manifold_pipelines = []
-
-                # Check if pipelines is a function or a list
-                if callable(pipeline.pipelines):
-                    manifold_pipelines = pipeline.pipelines()
-                else:
-                    manifold_pipelines = pipeline.pipelines
-
-                for p in manifold_pipelines:
-                    manifold_pipeline_id = f'{pipeline_id}.{p["id"]}'
-
-                    manifold_pipeline_name = p["name"]
-                    if hasattr(pipeline, "name"):
-                        manifold_pipeline_name = (
-                            f"{pipeline.name}{manifold_pipeline_name}"
-                        )
-
-                    pipelines[manifold_pipeline_id] = {
-                        "module": pipeline_id,
-                        "type": pipeline.type if hasattr(pipeline, "type") else "pipe",
-                        "id": manifold_pipeline_id,
-                        "name": manifold_pipeline_name,
-                        "valves": (
-                            pipeline.valves if hasattr(pipeline, "valves") else None
-                        ),
-                    }
-            if pipeline.type == "filter":
-                pipelines[pipeline_id] = {
-                    "module": pipeline_id,
-                    "type": (pipeline.type if hasattr(pipeline, "type") else "pipe"),
-                    "id": pipeline_id,
-                    "name": (
-                        pipeline.name if hasattr(pipeline, "name") else pipeline_id
-                    ),
-                    "pipelines": (
-                        pipeline.valves.pipelines
-                        if hasattr(pipeline, "valves")
-                        and hasattr(pipeline.valves, "pipelines")
-                        else []
-                    ),
-                    "priority": (
-                        pipeline.valves.priority
-                        if hasattr(pipeline, "valves")
-                        and hasattr(pipeline.valves, "priority")
-                        else 0
-                    ),
-                    "valves": pipeline.valves if hasattr(pipeline, "valves") else None,
-                }
-        else:
-            pipelines[pipeline_id] = {
-                "module": pipeline_id,
-                "type": (pipeline.type if hasattr(pipeline, "type") else "pipe"),
-                "id": pipeline_id,
-                "name": (pipeline.name if hasattr(pipeline, "name") else pipeline_id),
-                "valves": pipeline.valves if hasattr(pipeline, "valves") else None,
-            }
+        pipelines[pipeline_id] = {
+            "module": pipeline_id,
+            "id": pipeline_id,
+            "name": (pipeline.name if hasattr(pipeline, "name") else pipeline_id),
+            "valves": pipeline.valves if hasattr(pipeline, "valves") else None,
+        }
 
     return pipelines
 
@@ -394,19 +341,6 @@ async def get_models(user: str = Depends(get_current_user)):
                 "created": int(time.time()),
                 "owned_by": "openai",
                 "pipeline": {
-                    "type": pipeline["type"],
-                    **(
-                        {
-                            "pipelines": (
-                                pipeline["valves"].pipelines
-                                if pipeline.get("valves", None)
-                                else []
-                            ),
-                            "priority": pipeline.get("priority", 0),
-                        }
-                        if pipeline.get("type", "pipe") == "filter"
-                        else {}
-                    ),
                     "valves": pipeline["valves"] != None,
                 },
             }
@@ -432,11 +366,6 @@ async def list_pipelines(user: str = Depends(get_current_user)):
                 {
                     "id": pipeline_id,
                     "name": PIPELINE_NAMES[pipeline_id],
-                    "type": (
-                        PIPELINE_MODULES[pipeline_id].type
-                        if hasattr(PIPELINE_MODULES[pipeline_id], "type")
-                        else "pipe"
-                    ),
                     "valves": (
                         True
                         if hasattr(PIPELINE_MODULES[pipeline_id], "valves")
@@ -700,98 +629,21 @@ async def update_valves(pipeline_id: str, form_data: dict):
     return pipeline.valves
 
 
-@app.post("/v1/{pipeline_id}/filter/inlet")
-@app.post("/{pipeline_id}/filter/inlet")
-async def filter_inlet(pipeline_id: str, form_data: FilterForm):
-    if pipeline_id not in app.state.PIPELINES:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Filter {pipeline_id} not found",
-        )
-
-    try:
-        pipeline = app.state.PIPELINES[form_data.body["model"]]
-        if pipeline["type"] == "manifold":
-            pipeline_id = pipeline_id.split(".")[0]
-    except:
-        pass
-
-    pipeline = PIPELINE_MODULES[pipeline_id]
-
-    try:
-        if hasattr(pipeline, "inlet"):
-            body = await pipeline.inlet(form_data.body, form_data.user)
-            return body
-        else:
-            return form_data.body
-    except Exception as e:
-        print(e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"{str(e)}",
-        )
-
-
-@app.post("/v1/{pipeline_id}/filter/outlet")
-@app.post("/{pipeline_id}/filter/outlet")
-async def filter_outlet(pipeline_id: str, form_data: FilterForm):
-    if pipeline_id not in app.state.PIPELINES:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Filter {pipeline_id} not found",
-        )
-
-    try:
-        pipeline = app.state.PIPELINES[form_data.body["model"]]
-        if pipeline["type"] == "manifold":
-            pipeline_id = pipeline_id.split(".")[0]
-    except:
-        pass
-
-    pipeline = PIPELINE_MODULES[pipeline_id]
-
-    try:
-        if hasattr(pipeline, "outlet"):
-            body = await pipeline.outlet(form_data.body, form_data.user)
-            return body
-        else:
-            return form_data.body
-    except Exception as e:
-        print(e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"{str(e)}",
-        )
-
-
 @app.post("/v1/chat/completions")
 @app.post("/chat/completions")
 async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
     messages = [message.model_dump() for message in form_data.messages]
     user_message = get_last_user_message(messages)
 
-    if (
-        form_data.model not in app.state.PIPELINES
-        or app.state.PIPELINES[form_data.model]["type"] == "filter"
-    ):
+    if form_data.model not in app.state.PIPELINES:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pipeline {form_data.model} not found",
         )
 
     def job():
-        print(form_data.model)
-
-        pipeline = app.state.PIPELINES[form_data.model]
         pipeline_id = form_data.model
-
-        print(pipeline_id)
-
-        if pipeline["type"] == "manifold":
-            manifold_id, pipeline_id = pipeline_id.split(".", 1)
-            pipe = PIPELINE_MODULES[manifold_id].pipe
-        else:
-            pipe = PIPELINE_MODULES[pipeline_id].pipe
+        pipe = PIPELINE_MODULES[pipeline_id].pipe
 
         if form_data.stream:
 
