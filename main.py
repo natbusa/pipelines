@@ -39,9 +39,16 @@ PIPELINES = {}
 PIPELINE_MODULES = {}
 PIPELINE_NAMES = {}
 
-# Add GLOBAL_LOG_LEVEL for Pipeplines
+# Add GLOBAL_LOG_LEVEL for Pipelines
 log_level = os.getenv("GLOBAL_LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=LOG_LEVELS[log_level])
+LOG_FORMAT = "%(levelname)-8s [%(name)s] %(message)s"
+logging.basicConfig(level=LOG_LEVELS[log_level], format=LOG_FORMAT, force=True)
+
+# Override uvicorn log formatters to match our format
+_log_formatter = logging.Formatter(LOG_FORMAT)
+for _uv_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "watchfiles", "watchfiles.main"):
+    for _handler in logging.getLogger(_uv_name).handlers:
+        _handler.setFormatter(_log_formatter)
 
 
 def get_all_pipelines():
@@ -71,10 +78,10 @@ def install_frontmatter_requirements(requirements):
     if requirements:
         req_list = [req.strip() for req in requirements.split(",")]
         for req in req_list:
-            print(f"Installing requirement: {req}")
+            logging.info(f"Installing requirement: {req}")
             subprocess.check_call([sys.executable, "-m", "pip", "install", req])
     else:
-        print("No requirements found in frontmatter.")
+        logging.debug("No requirements found in frontmatter.")
 
 
 async def load_module_from_path(module_name, module_path):
@@ -105,13 +112,13 @@ async def load_module_from_path(module_name, module_path):
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        print(f"Loaded module: {module.__name__}")
+        logging.info(f"Loaded module: {module.__name__}")
         if hasattr(module, "Pipeline"):
             return module.Pipeline()
         else:
             raise Exception("No Pipeline class found")
     except Exception as e:
-        print(f"Error loading module: {module_name}")
+        logging.error(f"Error loading module: {module_name}: {e}")
 
         # Move the file to the error folder
         failed_pipelines_folder = os.path.join(PIPELINES_DIR, "failed")
@@ -120,7 +127,6 @@ async def load_module_from_path(module_name, module_path):
 
         failed_file_path = os.path.join(failed_pipelines_folder, f"{module_name}.py")
         os.rename(module_path, failed_file_path)
-        print(e)
     return None
 
 
@@ -158,14 +164,14 @@ async def load_package_from_directory(package_name, package_path):
         module = importlib.util.module_from_spec(spec)
         sys.modules[package_name] = module
         spec.loader.exec_module(module)
-        print(f"Loaded package: {package_name}")
+        logging.info(f"Loaded package: {package_name}")
 
         if hasattr(module, "Pipeline"):
             return module.Pipeline()
         else:
             raise Exception("No Pipeline class found")
     except Exception as e:
-        print(f"Error loading package: {package_name}")
+        logging.error(f"Error loading package: {package_name}: {e}")
 
         # Move the directory to the failed folder
         failed_pipelines_folder = os.path.join(PIPELINES_DIR, "failed")
@@ -176,7 +182,6 @@ async def load_package_from_directory(package_name, package_path):
         if os.path.exists(failed_package_path):
             shutil.rmtree(failed_package_path)
         shutil.move(package_path, failed_package_path)
-        print(e)
     return None
 
 
@@ -423,7 +428,7 @@ async def add_pipeline(
     try:
         url = convert_to_raw_url(form_data.url)
 
-        print(url)
+        logging.info(f"Downloading pipeline from: {url}")
         file_path = await download_file(url, dest_folder=PIPELINES_DIR)
         await reload()
         return {
@@ -620,7 +625,7 @@ async def update_valves(pipeline_id: str, form_data: dict):
         if hasattr(pipeline, "on_valves_updated"):
             await pipeline.on_valves_updated()
     except Exception as e:
-        print(e)
+        logging.error(f"Error updating valves: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"{str(e)}",
@@ -662,11 +667,11 @@ async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
                     body=body,
                     user=user,
                 )
-                logging.info(f"stream:true:{res}")
+                logging.debug(f"stream:true:{res}")
 
                 if isinstance(res, str):
                     message = stream_message_template(form_data.model, res)
-                    logging.info(f"stream_content:str:{message}")
+                    logging.debug(f"stream_content:str:{message}")
                     yield f"data: {json.dumps(message)}\n\n"
 
                 if isinstance(res, Iterator):
@@ -681,7 +686,7 @@ async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
 
                         try:
                             line = line.decode("utf-8")
-                            logging.info(f"stream_content:Generator:{line}")
+                            logging.debug(f"stream_content:Generator:{line}")
                         except:
                             pass
 
@@ -719,7 +724,7 @@ async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
                 body=body,
                 user=user,
             )
-            logging.info(f"stream:false:{res}")
+            logging.debug(f"stream:false:{res}")
 
             if isinstance(res, dict):
                 return res
@@ -736,7 +741,7 @@ async def generate_openai_chat_completion(form_data: OpenAIChatCompletionForm):
                     for stream in res:
                         message = f"{message}{stream}"
 
-                logging.info(f"stream:false:{message}")
+                logging.debug(f"stream:false:{message}")
                 return {
                     "id": f"{form_data.model}-{str(uuid.uuid4())}",
                     "object": "chat.completion",
