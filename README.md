@@ -136,6 +136,12 @@ Get started with Pipelines in a few easy steps:
    sh ./start.sh
    ```
 
+5. **Copy a scaffold into `pipelines/` to get started:**
+
+   ```sh
+   cp examples/scaffolds/blueprint.py pipelines/
+   ```
+
 Once the server is running, set the OpenAI URL on your client to the Pipelines URL. This unlocks the full capabilities of Pipelines, integrating any Python library and creating custom workflows tailored to your needs.
 
 ### Advanced Docker Builds

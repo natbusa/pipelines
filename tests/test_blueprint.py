@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from pipelines.blueprint import Pipeline
+from examples.scaffolds.blueprint import Pipeline
 from tests.helpers import collect_pipe, make_body, make_user
 
 
@@ -91,7 +91,7 @@ def test_pipe_without_callback():
 # ---------------------------------------------------------------------------
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_lists_files(mock_req):
     files = [
         {"meta": {"name": "readme.txt"}},
@@ -107,7 +107,7 @@ def test_pipe_lists_files(mock_req):
     assert "(2)" in combined
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_lists_empty_files(mock_req):
     _mock_requests(mock_req, files=[])
 
@@ -118,7 +118,7 @@ def test_pipe_lists_empty_files(mock_req):
     assert "_(none)_" in combined
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_truncates_file_list(mock_req):
     files = [{"meta": {"name": f"file{i}.txt"}} for i in range(15)]
     _mock_requests(mock_req, files=files)
@@ -129,7 +129,7 @@ def test_pipe_truncates_file_list(mock_req):
     assert "5 more" in combined
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_streams_model_response(mock_req):
     _mock_requests(mock_req, model_chunks=["Good ", "morning"])
 
@@ -140,7 +140,7 @@ def test_pipe_streams_model_response(mock_req):
     assert "morning" in combined
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_calls_configured_model(mock_req):
     _mock_requests(mock_req)
 
@@ -159,7 +159,7 @@ def test_pipe_calls_configured_model(mock_req):
     assert call_args[0].kwargs["json"]["model"] == "custom/model:7b"
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_uploads_transcript(mock_req):
     _mock_requests(mock_req, upload_id="abc-123")
 
@@ -177,7 +177,7 @@ def test_pipe_uploads_transcript(mock_req):
     assert len(upload_calls) == 1
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_emits_status_events(mock_req):
     _mock_requests(mock_req)
 
@@ -188,7 +188,7 @@ def test_pipe_emits_status_events(mock_req):
     assert any(s["done"] for s in statuses), "expected done status"
 
 
-@patch("pipelines.blueprint.requests")
+@patch("examples.scaffolds.blueprint.requests")
 def test_pipe_transcript_contains_exchange(mock_req):
     _mock_requests(mock_req, model_chunks=["The answer is 42"])
 

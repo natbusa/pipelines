@@ -110,6 +110,12 @@ pip install -r requirements.txt
 ./start.sh --reload
 ```
 
+Copy a scaffold into `pipelines/` to get started:
+
+```bash
+cp examples/scaffolds/blueprint.py pipelines/
+```
+
 The server starts on `http://localhost:9099`. In Open WebUI, go to **Settings > Connections > OpenAI API** and set:
 
 - API URL: `http://localhost:9099`
