@@ -465,9 +465,3 @@ OPENWEBUI_API_URL=http://open-webui:8080
 ```
 
 If unset, defaults to `request.base_url` (works when both services share the same host/network).
-
-## Filter deprecation
-
-Open WebUI no longer uses the `inlet`/`outlet` filter system. All pipeline logic goes through `pipe()`. A pipe that needs to wrap an existing model can call it via the callback API (see examples above).
-
-The filter endpoints (`/{id}/filter/inlet`, `/{id}/filter/outlet`) are no longer called by Open WebUI. Pipeline servers may keep them for backwards compatibility but they will not receive traffic from this fork.
