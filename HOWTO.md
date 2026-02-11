@@ -139,6 +139,7 @@ pipelines:
   environment:
     - PIPELINES_API_KEY=0p3n-w3bu!
     - VALVES_DIR=/app/valves
+    - INSTALL_REQUIREMENTS=true
 ```
 
 Where `my-pipelines/` contains your pipelines, each with their own deps:
@@ -154,17 +155,19 @@ my-pipelines/
 
 The `my-valves/` volume persists valve configurations (`valves.json` per pipeline) across container restarts and image upgrades. Pipeline code can be rebuilt freely without losing runtime config.
 
-On every container start, `start.sh` globs `pipelines/**/requirements.txt` and runs `pip install` for each. Already-installed packages are skipped quickly by pip, but if startup time matters, bake the deps into a custom image instead:
+`INSTALL_REQUIREMENTS=true` is needed here because the mounted volume shadows the baked-in pipelines directory, so deps need to be installed at startup.
+
+If startup time matters, bake the deps into a custom image instead:
 
 ### Building a custom image
 
 ```dockerfile
 FROM ghcr.io/open-webui/pipelines:main
 COPY my-pipelines/ /app/pipelines/
-RUN bash start.sh --mode setup
+RUN for req in ./pipelines/**/requirements.txt; do [ -f "$req" ] && pip install -r "$req"; done
 ```
 
-Then deps are installed at build time and startup is instant.
+Deps are installed at build time. `INSTALL_REQUIREMENTS` defaults to `false`, so no redundant install at startup.
 
 ### Environment variables
 
@@ -173,6 +176,7 @@ Then deps are installed at build time and startup is instant.
 | `PIPELINES_API_KEY` | `0p3n-w3bu!` | API key for authentication |
 | `PIPELINES_DIR` | `./pipelines` | Directory to load pipelines from |
 | `VALVES_DIR` | `./valves` | Directory to store valve configs (`valves.json` per pipeline). Mount as a persistent volume in Docker to preserve config across container rebuilds. |
+| `INSTALL_REQUIREMENTS` | `false` | Set to `true` to install pipeline requirements at startup. Use when mounting a pipelines volume that shadows the baked-in directory. |
 
 ## Testing pipelines
 

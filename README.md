@@ -150,6 +150,7 @@ Valve configurations are stored separately in `./valves` (one `valves.json` per 
 | `PIPELINES_API_KEY` | `0p3n-w3bu!` | API key for authentication |
 | `PIPELINES_DIR` | `./pipelines` | Directory to load pipelines from |
 | `VALVES_DIR` | `./valves` | Persistent directory for valve configs (`valves.json` per pipeline) |
+| `INSTALL_REQUIREMENTS` | `false` | Set to `true` to install pipeline requirements at startup |
 
 ### Integration Examples
 

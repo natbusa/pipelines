@@ -30,7 +30,9 @@ RUN set -eux; \
     find /.cache -type d -exec chmod g+s {} + || true
 
 # Install per-pipeline requirements (if any pipelines are baked in)
-RUN bash start.sh --mode setup
+RUN for req in ./pipelines/**/requirements.txt; do \
+      [ -f "$req" ] && pip install -r "$req"; \
+    done
 
 ENV HOST="0.0.0.0"
 ENV PORT="9099"
