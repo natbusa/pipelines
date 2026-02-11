@@ -10,9 +10,9 @@ UVICORN_LOOP="${UVICORN_LOOP:-auto}"
 
 reset_pipelines_dir() {
   if [ -d "$PIPELINES_DIR" ]; then
-    rm -rf "${PIPELINES_DIR:?}"/*
+    find "${PIPELINES_DIR:?}" -mindepth 1 -maxdepth 1 -not -name '.*' -exec rm -rf {} +
     mkdir -p "$PIPELINES_DIR"
-    echo "Reset pipelines directory: $PIPELINES_DIR"
+    echo "Reset pipelines directory: $PIPELINES_DIR (preserved hidden files)"
   fi
 }
 

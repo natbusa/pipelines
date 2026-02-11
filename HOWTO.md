@@ -168,11 +168,12 @@ Then deps are installed at build time and startup is instant.
 | Variable | Default | Description |
 |---|---|---|
 | `PIPELINES_DIR` | `./pipelines` | Directory to load pipelines from |
+| `VALVES_DIR` | `$PIPELINES_DIR/.valves` | Directory to store valve configs (`valves.json` per pipeline) |
 | `PIPELINES_API_KEY` | `0p3n-w3bu!` | API key for authentication |
 | `PIPELINES_URLS` | *(unset)* | Semicolon-separated URLs to download pipelines from at startup |
 | `PIPELINES_REQUIREMENTS_PATH` | *(unset)* | Path to a requirements.txt to install at startup |
 | `INSTALL_FRONTMATTER_REQUIREMENTS` | `false` | Install deps listed in pipeline frontmatter at startup |
-| `RESET_PIPELINES_DIR` | `false` | Wipe the pipelines directory on startup |
+| `RESET_PIPELINES_DIR` | `false` | Wipe pipeline code on startup (valve configs in `.valves/` are preserved) |
 
 ## Testing pipelines
 

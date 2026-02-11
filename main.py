@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, status, HTTPException, UploadFile, File
+from fastapi import FastAPI, Request, Depends, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 
@@ -10,15 +10,11 @@ from typing import List, Union, Generator, Iterator
 
 from utils.pipelines.auth import bearer_security, get_current_user
 from utils.pipelines.main import get_last_user_message, stream_message_template
-from utils.pipelines.misc import convert_to_raw_url
-
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from schemas import OpenAIChatCompletionForm
-from urllib.parse import urlparse
 
 import shutil
-import aiohttp
 import os
 import importlib.util
 import logging
@@ -29,10 +25,55 @@ import sys
 import subprocess
 
 
-from config import API_KEY, PIPELINES_DIR, LOG_LEVELS, INSTALL_FRONTMATTER_REQUIREMENTS
+from config import API_KEY, PIPELINES_DIR, VALVES_DIR, LOG_LEVELS, INSTALL_FRONTMATTER_REQUIREMENTS
 
 if not os.path.exists(PIPELINES_DIR):
     os.makedirs(PIPELINES_DIR)
+
+os.makedirs(VALVES_DIR, exist_ok=True)
+
+
+def _migrate_valves_to_new_dir():
+    """Move legacy valves.json files into VALVES_DIR.
+
+    Handles two cases:
+    1. Single-file pipelines: e.g. blueprint.py + blueprint/valves.json
+    2. Package pipelines: e.g. my_agent/__init__.py + my_agent/valves.json
+    """
+    for entry in os.listdir(PIPELINES_DIR):
+        entry_path = os.path.join(PIPELINES_DIR, entry)
+        if not os.path.isdir(entry_path) or entry.startswith(".") or entry == "failed":
+            continue
+
+        old_valves = os.path.join(entry_path, "valves.json")
+        if not os.path.exists(old_valves):
+            continue
+
+        new_dir = os.path.join(VALVES_DIR, entry)
+        new_valves = os.path.join(new_dir, "valves.json")
+
+        if not os.path.exists(new_valves):
+            os.makedirs(new_dir, exist_ok=True)
+            shutil.move(old_valves, new_valves)
+            logging.info(f"Migrated valves.json: {old_valves} -> {new_valves}")
+        else:
+            # New location already has the file, just remove the old one
+            os.remove(old_valves)
+            logging.info(f"Removed duplicate legacy valves.json: {old_valves}")
+
+        has_init = os.path.exists(os.path.join(entry_path, "__init__.py"))
+        if has_init:
+            # Package pipeline — leave directory intact (it still has code)
+            continue
+
+        # Single-file pipeline — clean up the now-empty directory
+        remaining = [f for f in os.listdir(entry_path) if f != "__pycache__"]
+        if not remaining:
+            shutil.rmtree(entry_path)
+            logging.info(f"Removed empty legacy directory: {entry_path}")
+
+
+_migrate_valves_to_new_dir()
 
 
 PIPELINES = {}
@@ -185,11 +226,11 @@ async def load_package_from_directory(package_name, package_path):
     return None
 
 
-def _register_pipeline(pipeline, module_name, directory):
+def _register_pipeline(pipeline, module_name):
     """Register a pipeline: set up valves.json and add to global registries."""
     global PIPELINE_MODULES, PIPELINE_NAMES
 
-    subfolder_path = os.path.join(directory, module_name)
+    subfolder_path = os.path.join(VALVES_DIR, module_name)
     if not os.path.exists(subfolder_path):
         os.makedirs(subfolder_path)
         logging.info(f"Created subfolder: {subfolder_path}")
@@ -234,13 +275,15 @@ async def load_modules_from_directory(directory):
 
             pipeline = await load_module_from_path(module_name, module_path)
             if pipeline:
-                _register_pipeline(pipeline, module_name, directory)
+                _register_pipeline(pipeline, module_name)
                 loaded_single_files.add(module_name)
             else:
                 logging.warning(f"No Pipeline class found in {module_name}")
 
     # Pass 2: Load package pipelines (directories with __init__.py)
     for entry in os.listdir(directory):
+        if entry.startswith("."):
+            continue
         entry_path = os.path.join(directory, entry)
         if not os.path.isdir(entry_path):
             continue
@@ -254,7 +297,7 @@ async def load_modules_from_directory(directory):
 
         pipeline = await load_package_from_directory(entry, entry_path)
         if pipeline:
-            _register_pipeline(pipeline, entry, directory)
+            _register_pipeline(pipeline, entry)
         else:
             logging.warning(f"No Pipeline class found in package {entry}")
 
@@ -274,25 +317,6 @@ async def on_shutdown():
     for module in PIPELINE_MODULES.values():
         if hasattr(module, "on_shutdown"):
             await module.on_shutdown()
-
-
-async def reload():
-    await on_shutdown()
-
-    # Clean up sys.modules entries for package pipelines to avoid stale imports
-    for module_name in list(PIPELINE_NAMES.values()):
-        keys_to_remove = [
-            key for key in sys.modules if key == module_name or key.startswith(f"{module_name}.")
-        ]
-        for key in keys_to_remove:
-            del sys.modules[key]
-
-    # Clear existing pipelines
-    PIPELINES.clear()
-    PIPELINE_MODULES.clear()
-    PIPELINE_NAMES.clear()
-    # Load pipelines afresh
-    await on_startup()
 
 
 @asynccontextmanager
@@ -387,170 +411,6 @@ async def list_pipelines(user: str = Depends(get_current_user)):
         )
 
 
-class AddPipelineForm(BaseModel):
-    url: str
-
-
-async def download_file(url: str, dest_folder: str):
-    filename = os.path.basename(urlparse(url).path)
-    if not filename.endswith(".py"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="URL must point to a Python file",
-        )
-
-    file_path = os.path.join(dest_folder, filename)
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Failed to download file",
-                )
-            with open(file_path, "wb") as f:
-                f.write(await response.read())
-
-    return file_path
-
-
-@app.post("/v1/pipelines/add")
-@app.post("/pipelines/add")
-async def add_pipeline(
-    form_data: AddPipelineForm, user: str = Depends(get_current_user)
-):
-    if user != API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-
-    try:
-        url = convert_to_raw_url(form_data.url)
-
-        logging.info(f"Downloading pipeline from: {url}")
-        file_path = await download_file(url, dest_folder=PIPELINES_DIR)
-        await reload()
-        return {
-            "status": True,
-            "detail": f"Pipeline added successfully from {file_path}",
-        }
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        )
-
-
-@app.post("/v1/pipelines/upload")
-@app.post("/pipelines/upload")
-async def upload_pipeline(
-    file: UploadFile = File(...), user: str = Depends(get_current_user)
-):
-    if user != API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-
-    file_ext = os.path.splitext(file.filename)[1]
-    if file_ext != ".py":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only Python files are allowed.",
-        )
-
-    try:
-        # Ensure the destination folder exists
-        os.makedirs(PIPELINES_DIR, exist_ok=True)
-
-        # Define the file path
-        file_path = os.path.join(PIPELINES_DIR, file.filename)
-
-        # Save the uploaded file to the specified directory
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        # Perform any necessary reload or processing
-        await reload()
-
-        return {
-            "status": True,
-            "detail": f"Pipeline uploaded successfully to {file_path}",
-        }
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
-        )
-
-
-class DeletePipelineForm(BaseModel):
-    id: str
-
-
-@app.delete("/v1/pipelines/delete")
-@app.delete("/pipelines/delete")
-async def delete_pipeline(
-    form_data: DeletePipelineForm, user: str = Depends(get_current_user)
-):
-    if user != API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-
-    pipeline_id = form_data.id
-    pipeline_name = PIPELINE_NAMES.get(pipeline_id.split(".")[0], None)
-
-    if PIPELINE_MODULES[pipeline_id]:
-        if hasattr(PIPELINE_MODULES[pipeline_id], "on_shutdown"):
-            await PIPELINE_MODULES[pipeline_id].on_shutdown()
-
-    pipeline_path = os.path.join(PIPELINES_DIR, f"{pipeline_name}.py")
-    if os.path.exists(pipeline_path):
-        os.remove(pipeline_path)
-        await reload()
-        return {
-            "status": True,
-            "detail": f"Pipeline {pipeline_id} deleted successfully",
-        }
-
-    # Check for package pipeline directory
-    package_path = os.path.join(PIPELINES_DIR, pipeline_name)
-    if os.path.isdir(package_path) and os.path.exists(
-        os.path.join(package_path, "__init__.py")
-    ):
-        shutil.rmtree(package_path)
-        await reload()
-        return {
-            "status": True,
-            "detail": f"Pipeline {pipeline_id} deleted successfully",
-        }
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Pipeline {pipeline_id} not found",
-    )
-
-
-@app.post("/v1/pipelines/reload")
-@app.post("/pipelines/reload")
-async def reload_pipelines(user: str = Depends(get_current_user)):
-    if user == API_KEY:
-        await reload()
-        return {"message": "Pipelines reloaded successfully."}
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-
-
 @app.get("/v1/{pipeline_id}/valves")
 @app.get("/{pipeline_id}/valves")
 async def get_valves(pipeline_id: str):
@@ -615,8 +475,8 @@ async def update_valves(pipeline_id: str, form_data: dict):
         pipeline.valves = valves
 
         # Determine the directory path for the valves.json file
-        subfolder_path = os.path.join(PIPELINES_DIR, PIPELINE_NAMES[pipeline_id])
-        valves_json_path = os.path.join(subfolder_path, "valves.json")
+        valve_dir = os.path.join(VALVES_DIR, PIPELINE_NAMES[pipeline_id])
+        valves_json_path = os.path.join(valve_dir, "valves.json")
 
         # Save the updated valves data back to the valves.json file
         with open(valves_json_path, "w") as f:
