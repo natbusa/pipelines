@@ -1,0 +1,41 @@
+# Changelog
+
+## 0.1.0
+
+Initial release of the forked pipelines server.
+
+### Architecture
+
+- Simplify to pipe-only: remove filter, manifold, and type system
+- Add package pipeline loading (directories with `__init__.py`)
+- Pass user context and `__openwebui` metadata to `pipe()`
+- Separate valve storage from pipeline code (`VALVES_DIR` env var)
+- Migrate legacy valves from pipeline directories on startup
+
+### Pipelines
+
+- Add pdf2pdf Arabic translation pipeline with layout-preserving rebuild
+- Install Amiri Arabic font in Docker image (`/app/fonts/arabic.ttf`)
+- Fix Arabic PDF text overflow with wider bounding boxes and font-size fallback
+
+### Configuration
+
+- Add `PIPELINES_DIR` env var (default `./pipelines`)
+- Add `VALVES_DIR` env var (default `./valves`)
+- Add `INSTALL_REQUIREMENTS` env var (default `false`) for runtime dep install
+- Per-pipeline `requirements.txt` replaces frontmatter requirements
+- Remove `PIPELINES_URLS`, `RESET_PIPELINES_DIR`, `INSTALL_FRONTMATTER_REQUIREMENTS`
+
+### Docker & deployment
+
+- Streamline Dockerfile: inline dep install at build time
+- Simplify `start.sh`: remove `--mode` flag, use `INSTALL_REQUIREMENTS` instead
+- Add `ship.sh` for Docker build and push with configurable tag and git hash
+
+### Developer experience
+
+- Add HOWTO guide for writing, organizing, and testing pipelines
+- Add test scaffolding with helpers (`make_body`, `make_user`, `collect_pipe`)
+- Add `openwebui.py` callback helpers (status events, file upload/download)
+- Unify log format across app, uvicorn, and watchfiles
+- Support `--reload` via uvicorn args passthrough
