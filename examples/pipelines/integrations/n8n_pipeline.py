@@ -1,58 +1,132 @@
-from typing import List, Union, Generator, Iterator
-import requests, json, warnings
+"""
+title: N8N Agent Pipeline
+author: open-webui
+version: 0.2.0
+license: MIT
+description: Forwards user messages to an n8n webhook workflow and returns the output
+"""
 
-# Uncomment to disable SSL verification warnings if needed.
-# warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+from typing import Generator, Iterator, List, Optional, Union
+from pydantic import BaseModel, Field
+import json
+import logging
+import requests
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Event helpers – yield these from pipe() to send structured events to the UI
+# ---------------------------------------------------------------------------
+
+def emit_status(
+    description: str = "Unknown state",
+    status: str = "in_progress",
+    done: bool = False,
+):
+    """Return a status event dict (yield it from pipe())."""
+    return {
+        "event": {
+            "type": "status",
+            "data": {
+                "status": status,
+                "description": description,
+                "done": done,
+            },
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pipeline
+# ---------------------------------------------------------------------------
 
 class Pipeline:
+    """
+    Forwards user messages to an n8n webhook workflow and returns the output.
+
+    Note: n8n does not support streaming responses.
+    """
+
+    class Valves(BaseModel):
+        pipeline_name: str = Field(
+            default="N8N Agent Pipeline",
+            description="Display name for this pipeline instance",
+        )
+        api_url: str = Field(
+            default="https://n8n.host/webhook/myflow",
+            description="n8n webhook URL for the workflow",
+        )
+        api_key: str = Field(
+            default="",
+            description="Bearer token for the n8n webhook",
+        )
+        verify_ssl: bool = Field(
+            default=True,
+            description="Verify SSL certificates when calling the webhook",
+        )
+
     def __init__(self):
-        self.name = "N8N Agent Pipeline"
-        self.api_url = "https://n8n.host/webhook/myflow"     # Set correct hostname
-        self.api_key = ""                                    # Insert your actual API key here
-        self.verify_ssl = True
-        self.debug = False
-        # Please note that N8N do not support stream reponses
+        self.valves = self.Valves()
+        self.name = self.valves.pipeline_name
+
+    # -- Lifecycle -----------------------------------------------------------
 
     async def on_startup(self):
-        # This function is called when the server is started.
-        print(f"on_startup: {__name__}")
-        pass
-    
-    async def on_shutdown(self): 
-        # This function is called when the server is shutdown.
-        print(f"on_shutdown: {__name__}")
-        pass
+        log.info(f"on_startup: {self.name}")
 
-    def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
-        # This is where you can add your custom pipelines like RAG.
-        print(f"pipe: {__name__}")
-        
-        if self.debug:
-            print(f"pipe: {__name__} - received message from user: {user_message}")
-        
-        # This function triggers the workflow using the specified API.
+    async def on_shutdown(self):
+        log.info(f"on_shutdown: {self.name}")
+
+    async def on_valves_updated(self):
+        self.name = self.valves.pipeline_name
+        log.info(f"on_valves_updated: {self.valves}")
+
+    # -- Pipe ----------------------------------------------------------------
+
+    def pipe(
+        self,
+        user_message: str,
+        model_id: str,
+        messages: List[dict],
+        body: dict,
+        user: Optional[dict] = None,
+    ) -> Union[str, Generator, Iterator]:
+        log.info(f"pipe: {len(messages)} messages, model={model_id}")
+
+        yield emit_status("Calling n8n workflow")
+
         headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json'
+            "Authorization": f"Bearer {self.valves.api_key}",
+            "Content-Type": "application/json",
         }
+
+        email = (user or {}).get("email", "unknown")
         data = {
             "inputs": {"prompt": user_message},
-            "user": body["user"]["email"]
+            "user": email,
         }
 
-        response = requests.post(self.api_url, headers=headers, json=data, verify=self.verify_ssl)
-        if response.status_code == 200:
-            # Process and yield each chunk from the response
-            try:
-                for line in response.iter_lines():
-                    if line:
-                        # Decode each line assuming UTF-8 encoding and directly parse it as JSON
-                        json_data = json.loads(line.decode('utf-8'))
-                        # Check if 'output' exists in json_data and yield it
-                        if 'output' in json_data:
-                            yield json_data['output']
-            except json.JSONDecodeError as e:
-                print(f"Failed to parse JSON from line. Error: {str(e)}")
-                yield "Error in JSON parsing."
-        else:
-            yield f"Workflow request failed with status code: {response.status_code}"
+        try:
+            response = requests.post(
+                self.valves.api_url,
+                headers=headers,
+                json=data,
+                verify=self.valves.verify_ssl,
+            )
+            response.raise_for_status()
+
+            for line in response.iter_lines():
+                if line:
+                    json_data = json.loads(line.decode("utf-8"))
+                    if "output" in json_data:
+                        yield json_data["output"]
+
+        except json.JSONDecodeError as e:
+            log.error(f"Failed to parse JSON: {e}")
+            yield "Error in JSON parsing."
+        except requests.RequestException as e:
+            log.error(f"Workflow request failed: {e}")
+            yield f"Workflow request failed: {e}"
+
+        yield emit_status("Done", done=True)
