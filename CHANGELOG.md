@@ -5,6 +5,16 @@ project, containing substantial modifications by Nate Busa (natalino.busa@gmail.
 with assistance from Claude (Anthropic). All fork modifications are subject to the
 same license terms as the upstream code from which they derive.
 
+## 0.2.0
+
+### Pipelines
+
+- Rewrite n8n pipeline to blueprint pattern: Valves (BaseModel), emit_status, logging, user context
+- Add `pipeline_name` valve for display name customization per n8n instance
+- Add 8 n8n symlink slots (`n8n_p0`..`n8n_p7`) for independently-configured workflow instances
+- Replace `pipelines/pdf2pdf` copy with symlink to `examples/experimental/pdf2pdf`
+- `pipelines/` directory is now purely symlinks; all source code lives under `examples/`
+
 ## 0.1.0
 
 Initial release of the forked pipelines server.
