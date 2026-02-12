@@ -5,8 +5,7 @@ PIPELINES_DIR="${PIPELINES_DIR:-./pipelines}"
 UVICORN_LOOP="${UVICORN_LOOP:-auto}"
 
 if [[ "${INSTALL_REQUIREMENTS:-false}" == "true" ]]; then
-  for req in "$PIPELINES_DIR"/**/requirements.txt; do
-    [ -f "$req" ] || continue
+  find -L "$PIPELINES_DIR" -name requirements.txt | while read -r req; do
     echo "Installing requirements from $req"
     pip install -r "$req"
   done

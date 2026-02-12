@@ -164,7 +164,7 @@ If startup time matters, bake the deps into a custom image instead:
 ```dockerfile
 FROM ghcr.io/open-webui/pipelines:main
 COPY my-pipelines/ /app/pipelines/
-RUN for req in ./pipelines/**/requirements.txt; do [ -f "$req" ] && pip install -r "$req"; done
+RUN find -L ./pipelines -name requirements.txt -exec pip install -r {} \;
 ```
 
 Deps are installed at build time. `INSTALL_REQUIREMENTS` defaults to `false`, so no redundant install at startup.
