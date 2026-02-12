@@ -15,6 +15,12 @@ same license terms as the upstream code from which they derive.
 - Replace `pipelines/pdf2pdf` copy with symlink to `examples/experimental/pdf2pdf`
 - `pipelines/` directory is now purely symlinks; all source code lives under `examples/`
 
+### Docker & deployment
+
+- Use `find -L` to follow directory symlinks when installing pipeline requirements
+- Replace bash `**` glob in `start.sh` with `find -L` for portable symlink support
+- Include `examples/` in Docker build context (symlink targets must be present)
+
 ## 0.1.0
 
 Initial release of the forked pipelines server.
